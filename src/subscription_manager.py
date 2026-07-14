@@ -200,7 +200,8 @@ class SubscriptionManager:
         }
         
         if self.config.promotion:
-            promoted_users = await self.promotion_manager.check_and_update_promoted_users()
+            # Statistics are read-only: don't mutate the tracking file here.
+            promoted_users = await self.promotion_manager.check_and_update_promoted_users(persist=False)
             stats["promoted_active"] = len(promoted_users[0])
             stats["promoted_expired"] = len(promoted_users[1])
             

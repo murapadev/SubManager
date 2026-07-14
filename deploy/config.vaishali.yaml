@@ -12,6 +12,7 @@ promotion:
   seeds_count: 5
   pages_per_seed: 2
   max_random_page: 5
+  affinity_min_score: 2  # prefer people followed by 2+ of your circle
 
 settings:
   retry_on_error: true

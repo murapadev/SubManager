@@ -16,9 +16,10 @@ class Config:
     count_promotion_users: int = 50
     retry_on: bool = True
     # Promotion discovery tuning
-    seeds_count: int = 5           # how many random followers to use as seeds per run
-    pages_per_seed: int = 2        # how many follower pages to sample per seed
+    seeds_count: int = 5           # how many circle seeds (mutuals first) to sample per run
+    pages_per_seed: int = 2        # how many pages of each seed's following to sample
     max_random_page: int = 5       # max page number to sample (GitHub paginates by 100)
+    affinity_min_score: int = 1    # min circle-overlap a candidate needs to qualify
     # Small-scale safety limits (per run). Keep these low on shared/server
     # deployments: bursts of follow/unfollow are what trigger GitHub abuse detection.
     max_follows_per_run: int = 20
@@ -40,6 +41,7 @@ class Config:
             seeds_count=data.get('SEEDS_COUNT', 5),
             pages_per_seed=data.get('PAGES_PER_SEED', 2),
             max_random_page=data.get('MAX_RANDOM_PAGE', 5),
+            affinity_min_score=data.get('AFFINITY_MIN_SCORE', 1),
             max_follows_per_run=data.get('MAX_FOLLOWS_PER_RUN', 20),
             max_unfollows_per_run=data.get('MAX_UNFOLLOWS_PER_RUN', 20),
             min_action_delay=data.get('MIN_ACTION_DELAY', 2.0),

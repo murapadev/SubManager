@@ -3,6 +3,7 @@ Utility functions for SubManager.
 """
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Set, List, Optional
 from datetime import datetime
@@ -23,26 +24,32 @@ def setup_logging(log_file: Optional[Path] = None, level: int = logging.INFO):
         level: Logging level
     """
     log_file = log_file or Path(__file__).parent.parent / "subscription_manager.log"
-    
+
+    root_logger = logging.getLogger()
+    # Avoid stacking duplicate handlers if setup_logging is called more than once.
+    if root_logger.handlers:
+        return
+
     # Create formatter
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    
-    # File handler
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+
+    # Rotating file handler: cap disk use on long-running server deployments.
+    file_handler = RotatingFileHandler(
+        log_file, maxBytes=1_000_000, backupCount=3, encoding='utf-8'
+    )
     file_handler.setFormatter(formatter)
     file_handler.setLevel(level)
-    
+
     # Console handler with simpler format
     console_handler = logging.StreamHandler(sys.stdout)
     console_formatter = logging.Formatter('%(levelname)s: %(message)s')
     console_handler.setFormatter(console_formatter)
     console_handler.setLevel(logging.INFO)
-    
+
     # Configure root logger
-    root_logger = logging.getLogger()
     root_logger.setLevel(level)
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)

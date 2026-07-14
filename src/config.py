@@ -96,6 +96,7 @@ class ConfigManager:
                 'SEEDS_COUNT': promotion_cfg.get('seeds_count', 5),
                 'PAGES_PER_SEED': promotion_cfg.get('pages_per_seed', 2),
                 'MAX_RANDOM_PAGE': promotion_cfg.get('max_random_page', 5),
+                'AFFINITY_MIN_SCORE': promotion_cfg.get('affinity_min_score', 1),
                 # Small-scale safety limits
                 'MAX_FOLLOWS_PER_RUN': settings_cfg.get('max_follows_per_run', 20),
                 'MAX_UNFOLLOWS_PER_RUN': settings_cfg.get('max_unfollows_per_run', 20),
@@ -159,6 +160,8 @@ class ConfigManager:
             raise ValueError("pages_per_seed must be >= 1")
         if self.config.max_random_page < 1:
             raise ValueError("max_random_page must be >= 1")
+        if self.config.affinity_min_score < 1:
+            raise ValueError("affinity_min_score must be >= 1")
 
         # Small-scale safety limits
         if self.config.max_follows_per_run < 0:
@@ -196,6 +199,7 @@ class ConfigManager:
                 'seeds_count': self.config.seeds_count,
                 'pages_per_seed': self.config.pages_per_seed,
                 'max_random_page': self.config.max_random_page,
+                'affinity_min_score': self.config.affinity_min_score,
             },
             'settings': {
                 'retry_on_error': self.config.retry_on,

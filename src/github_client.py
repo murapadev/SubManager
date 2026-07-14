@@ -68,7 +68,9 @@ class GitHubClient:
         async with self.semaphore:
             max_retries = 3
             retry_delay = 1
-            
+            max_rate_waits = 3   # cap rate-limit sleeps so we never loop forever
+            rate_waits = 0
+
             for attempt in range(max_retries):
                 try:
                     async with self.session.request(method, url, **kwargs) as response:
@@ -81,22 +83,41 @@ class GitHubClient:
                                     int(response.headers.get('X-RateLimit-Reset', 0))
                                 )
                             )
-                        
-                        # Handle rate limiting
-                        if response.status == 429:
-                            if self.rate_limit:
+
+                        # Handle rate limiting. GitHub signals it as 429 OR as 403
+                        # with either Retry-After (secondary/abuse limit) or
+                        # X-RateLimit-Remaining: 0 (primary limit exhausted).
+                        remaining = response.headers.get('X-RateLimit-Remaining')
+                        is_rate_limited = response.status == 429 or (
+                            response.status == 403 and (
+                                'Retry-After' in response.headers or remaining == '0'
+                            )
+                        )
+                        if is_rate_limited and rate_waits < max_rate_waits:
+                            retry_after = response.headers.get('Retry-After')
+                            if retry_after and retry_after.isdigit():
+                                wait_time = int(retry_after) + 1
+                            elif self.rate_limit:
                                 wait_time = self.rate_limit.seconds_until_reset + 1
-                                logger.warning(f"Rate limited. Waiting {wait_time} seconds...")
-                                await asyncio.sleep(wait_time)
-                                continue
-                        
+                            else:
+                                wait_time = 60
+                            # Bound the wait so a far-future reset can't stall a run.
+                            wait_time = min(wait_time, 900)
+                            rate_waits += 1
+                            logger.warning(
+                                f"Rate limited ({response.status}). Waiting {wait_time}s "
+                                f"(wait {rate_waits}/{max_rate_waits})..."
+                            )
+                            await asyncio.sleep(wait_time)
+                            continue
+
                         response.raise_for_status()
-                        
+
                         # Return JSON for API endpoints
                         if response.content_type == 'application/json':
                             return await response.json()
                         return {}
-                        
+
                 except ClientResponseError as e:
                     if e.status in [502, 503, 504] and attempt < max_retries - 1:
                         logger.warning(f"Server error {e.status}. Retrying in {retry_delay}s...")
@@ -110,7 +131,10 @@ class GitHubClient:
                         await asyncio.sleep(retry_delay)
                         continue
                     raise
-                    
+
+            # Retries exhausted without a successful response.
+            raise RuntimeError(f"Request failed after retries: {method} {endpoint}")
+
     async def get_followers(
         self, 
         username: Optional[str] = None,
@@ -169,47 +193,103 @@ class GitHubClient:
         return followers
         
     async def get_following(
-        self, 
+        self,
         username: Optional[str] = None,
-        max_pages: Optional[int] = None
+        max_pages: Optional[int] = None,
+        pages: Optional[List[int]] = None
     ) -> List[str]:
         """
         Get list of users that a user is following.
-        
+
         Args:
             username: GitHub username (defaults to authenticated user)
-            max_pages: Maximum number of pages to fetch
-            
+            max_pages: Maximum number of pages to fetch (from page 1)
+            pages: Specific page numbers to fetch (overrides max_pages if provided)
+
         Returns:
             List of following usernames
         """
         username = username or self.username
-        following = []
+        following: List[str] = []
+
+        # If explicit pages are provided, fetch only those
+        if pages:
+            seen_pages = sorted({p for p in pages if isinstance(p, int) and p > 0})
+            for page in seen_pages:
+                params = {'per_page': self.PER_PAGE, 'page': page}
+                data = await self._make_request(
+                    'GET',
+                    f'/users/{username}/following',
+                    params=params
+                )
+                if not data:
+                    continue
+                following.extend([user['login'] for user in data])
+            return following
+
+        # Default sequential pagination from page 1
         page = 1
-        
         while True:
             if max_pages and page > max_pages:
                 break
-                
+
             params = {'per_page': self.PER_PAGE, 'page': page}
             data = await self._make_request(
                 'GET',
                 f'/users/{username}/following',
                 params=params
             )
-            
+
             if not data:
                 break
-                
+
             following.extend([user['login'] for user in data])
-            
+
             if len(data) < self.PER_PAGE:
                 break
-                
+
             page += 1
-            
+
         logger.info(f"Fetched {len(following)} following for {username}")
         return following
+
+    async def get_following_batch(
+        self,
+        usernames: List[str],
+        max_pages: int = 1,
+        pages_map: Optional[Dict[str, List[int]]] = None
+    ) -> Dict[str, List[str]]:
+        """
+        Get the following lists for multiple users concurrently.
+
+        Args:
+            usernames: List of usernames
+            max_pages: Maximum pages per user (used if pages_map not provided)
+            pages_map: Per-username pages mapping to fetch different pages per user
+
+        Returns:
+            Dictionary mapping username to list of accounts they follow
+        """
+        tasks = []
+        for username in usernames:
+            user_pages = pages_map.get(username) if pages_map else None
+            tasks.append(self.get_following(
+                username,
+                max_pages=None if user_pages else max_pages,
+                pages=user_pages
+            ))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        following_dict: Dict[str, List[str]] = {}
+        for username, result in zip(usernames, results):
+            if isinstance(result, Exception):
+                logger.error(f"Error getting following for {username}: {result}")
+                following_dict[username] = []
+            else:
+                following_dict[username] = result
+
+        return following_dict
         
     async def follow_user(self, username: str) -> bool:
         """
