@@ -1,0 +1,13 @@
+[Unit]
+Description=Run SubManager twice a day with a randomized delay
+
+[Timer]
+# Two runs per day; RandomizedDelaySec spreads the actual execution so the
+# pattern is not perfectly periodic (looks less bot-like, avoids fixed spikes).
+OnCalendar=*-*-* 09:00:00
+OnCalendar=*-*-* 20:00:00
+RandomizedDelaySec=3600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

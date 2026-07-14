@@ -1,6 +1,8 @@
 """
 Configuration management module.
 """
+import os
+import re
 import yaml
 import logging
 from pathlib import Path
@@ -8,6 +10,28 @@ from typing import Optional, Set, List, Dict, Any
 import aiofiles
 
 from .models import Config
+
+
+def _resolve_token(raw: Optional[str]) -> str:
+    """
+    Resolve the GitHub token, preferring environment variables over the config file.
+
+    Precedence:
+      1. GITHUB_TOKEN / SUBMANAGER_TOKEN environment variables (never stored on disk).
+      2. ${VAR} placeholder inside the config value, expanded from the environment.
+      3. The literal value in the config file.
+    """
+    env_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("SUBMANAGER_TOKEN")
+    if env_token:
+        return env_token.strip()
+
+    if raw:
+        match = re.fullmatch(r"\$\{([A-Z0-9_]+)\}", raw.strip())
+        if match:
+            return os.environ.get(match.group(1), "").strip()
+        return raw.strip()
+
+    return ""
 
 
 logger = logging.getLogger(__name__)
@@ -19,11 +43,18 @@ class ConfigManager:
     def __init__(self, config_path: Optional[Path] = None):
         """
         Initialize configuration manager.
-        
+
         Args:
-            config_path: Path to configuration file
+            config_path: Path to configuration file. Falls back to the
+                SUBMANAGER_CONFIG environment variable, then to .env.yaml next
+                to the project root.
         """
-        self.config_path = config_path or Path(__file__).parent.parent / ".env.yaml"
+        env_path = os.environ.get("SUBMANAGER_CONFIG")
+        self.config_path = (
+            config_path
+            or (Path(env_path) if env_path else None)
+            or Path(__file__).parent.parent / ".env.yaml"
+        )
         self.config: Optional[Config] = None
         self.ban_lists: Dict[str, Set[str]] = {
             'never_follow': set(),
@@ -56,15 +87,21 @@ class ConfigManager:
 
             config_data = {
                 'USERNAME': data['github']['username'],
-                'TOKEN': data['github']['token'],
+                'TOKEN': _resolve_token(data['github'].get('token')),
                 'PROMOTION': promotion_cfg.get('enabled', True),
                 'DAYS_PERIOD': promotion_cfg.get('days_period', 3),
-                'COUNT_PROMOTION_USERS': promotion_cfg.get('count_users', 500),
+                'COUNT_PROMOTION_USERS': promotion_cfg.get('count_users', 50),
                 'RETRY_ON': settings_cfg.get('retry_on_error', True),
                 # New promotion discovery tuning
                 'SEEDS_COUNT': promotion_cfg.get('seeds_count', 5),
                 'PAGES_PER_SEED': promotion_cfg.get('pages_per_seed', 2),
                 'MAX_RANDOM_PAGE': promotion_cfg.get('max_random_page', 5),
+                # Small-scale safety limits
+                'MAX_FOLLOWS_PER_RUN': settings_cfg.get('max_follows_per_run', 20),
+                'MAX_UNFOLLOWS_PER_RUN': settings_cfg.get('max_unfollows_per_run', 20),
+                'MIN_ACTION_DELAY': settings_cfg.get('min_action_delay', 2.0),
+                'MAX_ACTION_DELAY': settings_cfg.get('max_action_delay', 6.0),
+                'DRY_RUN': settings_cfg.get('dry_run', False),
             }
             
             self.config = Config.from_dict(config_data)
@@ -122,6 +159,16 @@ class ConfigManager:
             raise ValueError("pages_per_seed must be >= 1")
         if self.config.max_random_page < 1:
             raise ValueError("max_random_page must be >= 1")
+
+        # Small-scale safety limits
+        if self.config.max_follows_per_run < 0:
+            raise ValueError("max_follows_per_run cannot be negative")
+        if self.config.max_unfollows_per_run < 0:
+            raise ValueError("max_unfollows_per_run cannot be negative")
+        if self.config.min_action_delay < 0 or self.config.max_action_delay < 0:
+            raise ValueError("action delays cannot be negative")
+        if self.config.max_action_delay < self.config.min_action_delay:
+            raise ValueError("max_action_delay must be >= min_action_delay")
             
     async def save(self, config: Optional[Config] = None):
         """
@@ -154,7 +201,12 @@ class ConfigManager:
                 'retry_on_error': self.config.retry_on,
                 'max_concurrent_requests': 5,
                 'request_delay': 0.5,
-                'batch_size': 5
+                'batch_size': 5,
+                'max_follows_per_run': self.config.max_follows_per_run,
+                'max_unfollows_per_run': self.config.max_unfollows_per_run,
+                'min_action_delay': self.config.min_action_delay,
+                'max_action_delay': self.config.max_action_delay,
+                'dry_run': self.config.dry_run,
             },
             'ban_lists': {
                 'never_follow': sorted(list(self.ban_lists.get('never_follow', set()))),

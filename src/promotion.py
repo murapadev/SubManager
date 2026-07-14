@@ -219,7 +219,12 @@ class PromotionManager:
         # Find new users to promote if needed
         current_promoted_count = len(active_promoted)
         needed_count = self.config.count_promotion_users - current_promoted_count
-        
+
+        # Never discover more than one run's follow budget at a time: keeps API
+        # usage and follow volume small on automated server runs.
+        if self.config.max_follows_per_run > 0:
+            needed_count = min(needed_count, self.config.max_follows_per_run)
+
         if needed_count > 0:
             logger.info(f"Need to find {needed_count} new users to promote")
             

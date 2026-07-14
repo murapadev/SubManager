@@ -1,0 +1,20 @@
+[Unit]
+Description=SubManager - GitHub follow/unfollow automation (small-scale)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=submanager
+Group=submanager
+WorkingDirectory=/opt/submanager
+# Token is provided here, never committed to the repo or the YAML config.
+EnvironmentFile=/etc/submanager/token.env
+ExecStart=/opt/submanager/.venv/bin/python /opt/submanager/main.py --config /etc/submanager/config.yaml
+Nice=10
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/submanager

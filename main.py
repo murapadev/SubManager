@@ -5,6 +5,7 @@ Enhanced version with concurrent operations for better performance.
 """
 
 import asyncio
+import os
 import sys
 import argparse
 import logging
@@ -25,7 +26,7 @@ from src import (
 logger = logging.getLogger(__name__)
 
 
-async def main_async():
+async def main_async(config_path=None, dry_run=False):
     """Main async function."""
     # Setup logging
     setup_logging()
@@ -47,10 +48,14 @@ async def main_async():
     
     # Load configuration
     print("📋 Loading configuration...")
-    config_manager = ConfigManager()
-    
+    config_manager = ConfigManager(config_path)
+
     try:
         config = await config_manager.load()
+        if dry_run:
+            config.dry_run = True
+        if config.dry_run:
+            print("🧪 DRY-RUN mode: no changes will be made to GitHub")
         print(f"✅ Configuration loaded for user: {config.username}")
         logger.info(f"Configuration loaded for user: {config.username}")
     except FileNotFoundError:
@@ -101,15 +106,15 @@ async def main_async():
     return 0
 
 
-async def stats_command():
+async def stats_command(config_path=None):
     """Show statistics only."""
     setup_logging()
-    
+
     print("📊 SubManager Statistics")
     print("=" * 60)
-    
+
     # Load configuration
-    config_manager = ConfigManager()
+    config_manager = ConfigManager(config_path)
     
     try:
         config = await config_manager.load()
@@ -160,15 +165,27 @@ Examples:
         action="store_true",
         help="Show statistics only"
     )
-    
+    parser.add_argument(
+        "--config",
+        metavar="PATH",
+        default=os.environ.get("SUBMANAGER_CONFIG"),
+        help="Path to the YAML config file (or set SUBMANAGER_CONFIG)"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Log intended follow/unfollow actions without touching GitHub"
+    )
+
     args = parser.parse_args()
-    
+    config_path = Path(args.config) if args.config else None
+
     # Determine which command to run
     if args.stats:
-        exit_code = asyncio.run(stats_command())
+        exit_code = asyncio.run(stats_command(config_path))
     else:
-        exit_code = asyncio.run(main_async())
-    
+        exit_code = asyncio.run(main_async(config_path, args.dry_run))
+
     sys.exit(exit_code)
 
 

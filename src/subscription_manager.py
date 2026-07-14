@@ -3,13 +3,13 @@ Main subscription management module.
 """
 import logging
 import asyncio
+import random
 from pathlib import Path
-from typing import Set, Dict, List, Optional
+from typing import Set, Dict, List
 
 from .models import Config, SubscriptionState
 from .github_client import GitHubClient
 from .promotion import PromotionManager
-from .utils import batch_process
 
 
 logger = logging.getLogger(__name__)
@@ -93,13 +93,24 @@ class SubscriptionManager:
         # Calculate users to follow and unfollow
         users_to_follow = self.state.get_users_to_follow()
         users_to_unfollow = self.state.get_users_to_unfollow()
-        
-        logger.info(f"Users to follow: {len(users_to_follow)}, Users to unfollow: {len(users_to_unfollow)}")
-        
+
+        logger.info(f"Candidates -> follow: {len(users_to_follow)}, unfollow: {len(users_to_unfollow)}")
+
+        # Enforce small-scale per-run caps. Randomize which candidates are picked so
+        # repeated runs don't always act on the same alphabetical prefix.
+        follow_batch = self._cap(users_to_follow, self.config.max_follows_per_run, "follow")
+        unfollow_batch = self._cap(users_to_unfollow, self.config.max_unfollows_per_run, "unfollow")
+
+        if self.config.dry_run:
+            logger.info("[DRY-RUN] No changes will be made to GitHub")
+            logger.info(f"[DRY-RUN] Would follow {len(follow_batch)}: {sorted(follow_batch)}")
+            logger.info(f"[DRY-RUN] Would unfollow {len(unfollow_batch)}: {sorted(unfollow_batch)}")
+            return
+
         # Process follows and unfollows concurrently
         results = await asyncio.gather(
-            self._process_follows(list(users_to_follow)),
-            self._process_unfollows(list(users_to_unfollow)),
+            self._process_follows(follow_batch),
+            self._process_unfollows(unfollow_batch),
             return_exceptions=True
         )
         
@@ -108,89 +119,47 @@ class SubscriptionManager:
             if isinstance(result, Exception):
                 logger.error(f"Error during subscription processing: {result}")
                 
+    def _cap(self, candidates: Set[str], limit: int, action: str) -> List[str]:
+        """Randomly cap a candidate set to the per-run limit for small-scale use."""
+        pool = list(candidates)
+        if limit <= 0 or len(pool) <= limit:
+            return sorted(pool)
+        picked = random.sample(pool, limit)
+        logger.info(f"Capping {action}: {len(pool)} candidates -> {limit} this run")
+        return sorted(picked)
+
+    async def _run_sequential(self, users: List[str], op, verb: str) -> Dict[str, bool]:
+        """
+        Run follow/unfollow one user at a time with a randomized human-like delay.
+
+        Sequential + jittered pacing keeps volume low and avoids the burst pattern
+        that GitHub abuse detection flags on server deployments.
+        """
+        if not users:
+            return {}
+
+        logger.info(f"{verb.capitalize()}ing {len(users)} users (min={self.config.min_action_delay}s, "
+                    f"max={self.config.max_action_delay}s)...")
+
+        results: Dict[str, bool] = {}
+        for idx, user in enumerate(users, start=1):
+            results[user] = await op(user)
+            logger.info(f"Progress: {idx}/{len(users)} {verb}ed")
+            if idx < len(users):
+                await asyncio.sleep(random.uniform(self.config.min_action_delay,
+                                                    self.config.max_action_delay))
+
+        successful = sum(1 for v in results.values() if v)
+        logger.info(f"Successfully {verb}ed {successful}/{len(users)} users")
+        return results
+
     async def _process_follows(self, users: List[str]) -> Dict[str, bool]:
-        """
-        Process user follows with progress tracking.
-        
-        Args:
-            users: List of users to follow
-            
-        Returns:
-            Dictionary of results
-        """
-        if not users:
-            return {}
-            
-        logger.info(f"Following {len(users)} users...")
-        
-        # Sort users for consistent ordering
-        users = sorted(users)
-        
-        results = {}
-        batch_size = 5  # Reduced batch size to avoid rate limiting
-        delay = 1.5  # Increased delay between batches
-        
-        for i in range(0, len(users), batch_size):
-            batch = users[i:i + batch_size]
-            
-            # Follow users in batch with increased delay
-            batch_results = await self.client.batch_follow(batch, delay=0.5)
-            results.update(batch_results)
-            
-            # Log progress
-            logger.info(f"Progress: {min(i + batch_size, len(users))}/{len(users)} users followed")
-            
-            # Delay between batches (except for last batch)
-            if i + batch_size < len(users):
-                await asyncio.sleep(delay)
-                
-        # Log summary
-        successful = sum(1 for v in results.values() if v)
-        logger.info(f"Successfully followed {successful}/{len(users)} users")
-        
-        return results
-        
+        """Follow the given users sequentially with jittered pacing."""
+        return await self._run_sequential(users, self.client.follow_user, "follow")
+
     async def _process_unfollows(self, users: List[str]) -> Dict[str, bool]:
-        """
-        Process user unfollows with progress tracking.
-        
-        Args:
-            users: List of users to unfollow
-            
-        Returns:
-            Dictionary of results
-        """
-        if not users:
-            return {}
-            
-        logger.info(f"Unfollowing {len(users)} users...")
-        
-        # Sort users for consistent ordering
-        users = sorted(users)
-        
-        results = {}
-        batch_size = 5  # Reduced batch size to avoid rate limiting
-        delay = 1.5  # Increased delay between batches
-        
-        for i in range(0, len(users), batch_size):
-            batch = users[i:i + batch_size]
-            
-            # Unfollow users in batch with increased delay
-            batch_results = await self.client.batch_unfollow(batch, delay=0.5)
-            results.update(batch_results)
-            
-            # Log progress
-            logger.info(f"Progress: {min(i + batch_size, len(users))}/{len(users)} users unfollowed")
-            
-            # Delay between batches
-            if i + batch_size < len(users):
-                await asyncio.sleep(delay)
-                
-        # Log summary
-        successful = sum(1 for v in results.values() if v)
-        logger.info(f"Successfully unfollowed {successful}/{len(users)} users")
-        
-        return results
+        """Unfollow the given users sequentially with jittered pacing."""
+        return await self._run_sequential(users, self.client.unfollow_user, "unfollow")
         
     async def run(self):
         """Run the complete subscription management process."""

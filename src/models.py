@@ -13,13 +13,20 @@ class Config:
     token: str
     promotion: bool = True
     days_period: int = 3
-    count_promotion_users: int = 500
+    count_promotion_users: int = 50
     retry_on: bool = True
     # Promotion discovery tuning
     seeds_count: int = 5           # how many random followers to use as seeds per run
     pages_per_seed: int = 2        # how many follower pages to sample per seed
     max_random_page: int = 5       # max page number to sample (GitHub paginates by 100)
-    
+    # Small-scale safety limits (per run). Keep these low on shared/server
+    # deployments: bursts of follow/unfollow are what trigger GitHub abuse detection.
+    max_follows_per_run: int = 20
+    max_unfollows_per_run: int = 20
+    min_action_delay: float = 2.0  # min seconds between individual follow/unfollow calls
+    max_action_delay: float = 6.0  # max seconds; actual delay is randomized in this range
+    dry_run: bool = False          # log intended actions without touching GitHub
+
     @classmethod
     def from_dict(cls, data: dict) -> 'Config':
         """Create Config instance from dictionary."""
@@ -28,11 +35,16 @@ class Config:
             token=data['TOKEN'],
             promotion=data.get('PROMOTION', True),
             days_period=data.get('DAYS_PERIOD', 3),
-            count_promotion_users=data.get('COUNT_PROMOTION_USERS', 500),
+            count_promotion_users=data.get('COUNT_PROMOTION_USERS', 50),
             retry_on=data.get('RETRY_ON', True),
             seeds_count=data.get('SEEDS_COUNT', 5),
             pages_per_seed=data.get('PAGES_PER_SEED', 2),
-            max_random_page=data.get('MAX_RANDOM_PAGE', 5)
+            max_random_page=data.get('MAX_RANDOM_PAGE', 5),
+            max_follows_per_run=data.get('MAX_FOLLOWS_PER_RUN', 20),
+            max_unfollows_per_run=data.get('MAX_UNFOLLOWS_PER_RUN', 20),
+            min_action_delay=data.get('MIN_ACTION_DELAY', 2.0),
+            max_action_delay=data.get('MAX_ACTION_DELAY', 6.0),
+            dry_run=data.get('DRY_RUN', False),
         )
 
 
