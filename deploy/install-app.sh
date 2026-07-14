@@ -18,6 +18,9 @@ echo "==> Creating service user"
 id submanager &>/dev/null || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin submanager
 
 echo "==> Fetching application ($REPO@$BRANCH)"
+# The repo is owned by the unprivileged 'submanager' user but git runs here as
+# root; without this, re-runs fail with "detected dubious ownership".
+git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
 if [ -d "$APP_DIR/.git" ]; then
   git -C "$APP_DIR" fetch --depth 1 origin "$BRANCH"
   git -C "$APP_DIR" reset --hard "origin/$BRANCH"
