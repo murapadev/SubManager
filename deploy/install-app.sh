@@ -51,5 +51,5 @@ echo "==> Done. Timer status:"
 systemctl status submanager.timer --no-pager --lines=0 || true
 echo
 echo "Next: put the real token in $CFG_DIR/token.env, then dry-run:"
-echo "  sudo -u submanager GITHUB_TOKEN=\$(grep -oP '(?<=GITHUB_TOKEN=).*' $CFG_DIR/token.env) \\"
+echo "  runuser -u submanager -- env GITHUB_TOKEN=\$(grep -oP '(?<=GITHUB_TOKEN=).*' $CFG_DIR/token.env) \\"
 echo "    $APP_DIR/.venv/bin/python $APP_DIR/main.py --config $CFG_DIR/config.yaml --dry-run"

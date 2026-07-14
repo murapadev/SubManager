@@ -35,7 +35,7 @@ static IP `172.16.1.<octet>`, egress via host NAT.
 2. For Vaishali, set her GitHub username in `/etc/submanager/config.yaml`.
 3. Dry-run first (no changes are made to GitHub):
    ```bash
-   pct exec 307 -- sudo -u submanager env GITHUB_TOKEN=ghp_xxx \
+   pct exec 307 -- runuser -u submanager -- env GITHUB_TOKEN=ghp_xxx \
      /opt/submanager/.venv/bin/python /opt/submanager/main.py \
      --config /etc/submanager/config.yaml --dry-run
    ```

@@ -53,6 +53,6 @@ pct exec "$VMID" -- bash /root/install-app.sh
 echo
 echo "==> CT $VMID provisioned."
 echo "   Set the token:  pct exec $VMID -- sed -i 's#PUT_YOUR_TOKEN_HERE#<TOKEN>#' /etc/submanager/token.env"
-echo "   Dry-run:        pct exec $VMID -- sudo -u submanager env GITHUB_TOKEN=<TOKEN> \\"
+echo "   Dry-run:        pct exec $VMID -- runuser -u submanager -- env GITHUB_TOKEN=<TOKEN> \\"
 echo "                     /opt/submanager/.venv/bin/python /opt/submanager/main.py \\"
 echo "                     --config /etc/submanager/config.yaml --dry-run"
