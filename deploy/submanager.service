@@ -10,6 +10,11 @@ Group=submanager
 WorkingDirectory=/opt/submanager
 # Token is provided here, never committed to the repo or the YAML config.
 EnvironmentFile=/etc/submanager/token.env
+# Runtime-writable state (logs, promoted_users.txt) goes to /var/lib/submanager,
+# NOT the code dir — which stays read-only and root-owned.
+StateDirectory=submanager
+StateDirectoryMode=0750
+Environment=SUBMANAGER_DATA_DIR=%S/submanager
 ExecStart=/opt/submanager/.venv/bin/python /opt/submanager/main.py --config /etc/submanager/config.yaml
 Nice=10
 # Hardening
@@ -17,4 +22,3 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/submanager

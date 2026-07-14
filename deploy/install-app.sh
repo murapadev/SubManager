@@ -40,9 +40,18 @@ mkdir -p "$CFG_DIR"
 if [ ! -f "$CFG_DIR/token.env" ]; then
   echo 'GITHUB_TOKEN=PUT_YOUR_TOKEN_HERE' > "$CFG_DIR/token.env"
 fi
-chmod 600 "$CFG_DIR/token.env"
-[ -f "$CFG_DIR/config.yaml" ] && chmod 640 "$CFG_DIR/config.yaml"
-chown -R submanager:submanager "$APP_DIR" "$CFG_DIR"
+
+# Security: code, venv and secrets stay root-owned so the unprivileged service
+# user cannot tamper with anything that root (re-installs) or the service later
+# executes. The service only needs READ access; writable state lives in
+# /var/lib/submanager (created below, owned by the service user).
+chown -R root:root "$APP_DIR" "$CFG_DIR"
+chmod 600 "$CFG_DIR/token.env"                       # root-only; systemd reads it as root
+if [ -f "$CFG_DIR/config.yaml" ]; then
+  chgrp submanager "$CFG_DIR/config.yaml"            # service user may read config
+  chmod 640 "$CFG_DIR/config.yaml"
+fi
+install -d -o submanager -g submanager -m 750 /var/lib/submanager
 
 echo "==> systemd units"
 install -m 644 "$APP_DIR/deploy/submanager.service" /etc/systemd/system/submanager.service
@@ -53,6 +62,8 @@ systemctl enable --now submanager.timer
 echo "==> Done. Timer status:"
 systemctl status submanager.timer --no-pager --lines=0 || true
 echo
-echo "Next: put the real token in $CFG_DIR/token.env, then dry-run:"
-echo "  runuser -u submanager -- env GITHUB_TOKEN=\$(grep -oP '(?<=GITHUB_TOKEN=).*' $CFG_DIR/token.env) \\"
+echo "Next: put the real token in $CFG_DIR/token.env (as root), then dry-run:"
+echo "  runuser -u submanager -- env \\"
+echo "    GITHUB_TOKEN=\$(grep -oP '(?<=GITHUB_TOKEN=).*' $CFG_DIR/token.env) \\"
+echo "    SUBMANAGER_DATA_DIR=/var/lib/submanager \\"
 echo "    $APP_DIR/.venv/bin/python $APP_DIR/main.py --config $CFG_DIR/config.yaml --dry-run"

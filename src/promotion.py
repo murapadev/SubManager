@@ -4,11 +4,10 @@ Promotion module for finding and managing new users to follow.
 import logging
 from typing import List, Set
 from datetime import datetime
-from pathlib import Path
 
 from .models import PromotedUser, Config
 from .github_client import GitHubClient
-from .utils import load_promoted_users, save_promoted_users
+from .utils import load_promoted_users, save_promoted_users, get_data_dir
 
 
 logger = logging.getLogger(__name__)
@@ -27,7 +26,7 @@ class PromotionManager:
         """
         self.client = client
         self.config = config
-        self.promoted_users_file = Path(__file__).parent.parent / "promoted_users.txt"
+        self.promoted_users_file = get_data_dir() / "promoted_users.txt"
         
     async def find_users_to_promote(
         self,

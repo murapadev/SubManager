@@ -1,10 +1,25 @@
 """
 Utility functions for SubManager.
 """
+import os
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
+
+def get_data_dir() -> Path:
+    """
+    Directory for runtime-writable state (logs, promoted_users.txt).
+
+    On a hardened server deploy the code dir is read-only, so state must live
+    elsewhere. Resolution order: SUBMANAGER_DATA_DIR, then systemd's
+    STATE_DIRECTORY, then the project root (local/dev fallback).
+    """
+    d = os.environ.get("SUBMANAGER_DATA_DIR") or os.environ.get("STATE_DIRECTORY")
+    if d:
+        return Path(d.split(":")[0])  # STATE_DIRECTORY may be colon-separated
+    return Path(__file__).parent.parent
 from typing import Set, List, Optional
 from datetime import datetime
 import asyncio
@@ -23,7 +38,7 @@ def setup_logging(log_file: Optional[Path] = None, level: int = logging.INFO):
         log_file: Path to log file
         level: Logging level
     """
-    log_file = log_file or Path(__file__).parent.parent / "subscription_manager.log"
+    log_file = log_file or get_data_dir() / "subscription_manager.log"
 
     root_logger = logging.getLogger()
     # Avoid stacking duplicate handlers if setup_logging is called more than once.

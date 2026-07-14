@@ -7,10 +7,15 @@ unprivileged Debian LXC per GitHub account.
 
 | Path | Purpose | Perms |
 |------|---------|-------|
-| `/opt/submanager` | app + venv (`git` clone of the fork) | `submanager:submanager` |
-| `/etc/submanager/config.yaml` | per-user YAML config | `640` |
-| `/etc/submanager/token.env` | `GITHUB_TOKEN=...` (never in git) | `600` |
+| `/opt/submanager` | app + venv (`git` clone of the fork) | `root:root` (RO to service) |
+| `/etc/submanager/config.yaml` | per-user YAML config | `640 root:submanager` |
+| `/etc/submanager/token.env` | `GITHUB_TOKEN=...` (never in git) | `600 root:root` |
+| `/var/lib/submanager` | runtime state (logs, promoted_users) | `750 submanager:submanager` |
 | `submanager.service` / `.timer` | oneshot run, twice/day + jitter | — |
+
+Code, venv and the token stay root-owned so the unprivileged service user
+cannot tamper with anything root or the service later executes. Only
+`/var/lib/submanager` (via systemd `StateDirectory`) is writable by the service.
 
 The token lives **only** in `token.env` and is injected as an environment
 variable; the YAML keeps the `${GITHUB_TOKEN}` placeholder.
@@ -36,6 +41,7 @@ static IP `172.16.1.<octet>`, egress via host NAT.
 3. Dry-run first (no changes are made to GitHub):
    ```bash
    pct exec 307 -- runuser -u submanager -- env GITHUB_TOKEN=ghp_xxx \
+     SUBMANAGER_DATA_DIR=/var/lib/submanager \
      /opt/submanager/.venv/bin/python /opt/submanager/main.py \
      --config /etc/submanager/config.yaml --dry-run
    ```
