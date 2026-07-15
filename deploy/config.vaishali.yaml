@@ -1,8 +1,7 @@
-# SubManager config - Vaishali
+# SubManager config - Vaishali (Vishi)
 # Token is injected via GITHUB_TOKEN from /etc/submanager/token.env
-# TODO: set the correct GitHub username before first live run.
 github:
-  username: "VAISHALI_GITHUB_USERNAME"
+  username: "BhagwaniVishi"
   token: "${GITHUB_TOKEN}"
 
 promotion:
