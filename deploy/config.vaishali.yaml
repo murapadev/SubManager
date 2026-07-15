@@ -7,7 +7,7 @@ github:
 promotion:
   enabled: true
   days_period: 3
-  count_users: 40
+  count_users: 50
   seeds_count: 5
   pages_per_seed: 2
   max_random_page: 5
@@ -18,9 +18,9 @@ settings:
   max_concurrent_requests: 5
   request_delay: 0.5
   batch_size: 5
-  # Small-scale limits: ~15 actions per run x 2 runs/day = ~30/day max
-  max_follows_per_run: 15
-  max_unfollows_per_run: 15
+  # ~50 actions per run x 2 runs/day = ~100/day max
+  max_follows_per_run: 50
+  max_unfollows_per_run: 50
   min_action_delay: 4.0
   max_action_delay: 12.0
   dry_run: false
